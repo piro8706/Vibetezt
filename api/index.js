@@ -414,4 +414,13 @@ app.get('/', (req, res) => {
   res.redirect('/docs');
 });
 
+// Local development server
+const PORT = process.env.PORT || 3000;
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`API running at http://localhost:${PORT}`);
+    console.log(`Docs at http://localhost:${PORT}/docs`);
+  });
+}
+
 module.exports = app;
