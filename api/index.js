@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const swaggerUi = require('swagger-ui-express');
 const compression = require('compression');
 
 const {
@@ -327,14 +326,38 @@ const swaggerDocument = {
   },
 };
 
-// Swagger UI with proper configuration for serverless
-const swaggerOptions = {
-  explorer: false,
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Anikoto API Docs',
-};
-
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
+// Swagger UI - serve from CDN for Vercel compatibility
+app.get('/docs', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anikoto API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    .swagger-ui .topbar { display: none }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        spec: ${JSON.stringify(swaggerDocument)},
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+        layout: 'BaseLayout',
+        deepLinking: true,
+        showExtensions: true,
+        showCommonExtensions: true
+      });
+    };
+  </script>
+</body>
+</html>`);
+});
 
 // ─── Home ───
 app.get('/api/home', async (req, res) => {
