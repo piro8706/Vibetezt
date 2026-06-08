@@ -29,7 +29,7 @@ const swaggerDocument = {
   openapi: '3.0.0',
   info: {
     title: 'Anikoto API',
-    version: '1.1.0',
+    version: '1.2.0',
     description: 'Unofficial REST API for anikoto.cz anime data. Provides structured anime metadata, episodes, servers, video URLs, search, browse, and documentation.',
   },
   servers: [{ url: '/' }],
@@ -189,9 +189,9 @@ const swaggerDocument = {
     '/api/az/{letter}': {
       get: {
         tags: ['Browse'],
-        summary: 'A-Z anime list',
+        summary: 'A-Z anime list by letter',
         parameters: [
-          { name: 'letter', in: 'path', required: true, schema: { type: 'string' }, description: 'First letter (A-Z), or use "all" for everything' },
+          { name: 'letter', in: 'path', required: true, schema: { type: 'string' }, description: 'First letter (A-Z)' },
           { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
         ],
         responses: {
@@ -203,9 +203,10 @@ const swaggerDocument = {
     '/api/az': {
       get: {
         tags: ['Browse'],
-        summary: 'A-Z anime list (all)',
+        summary: 'A-Z anime list (all animes)',
+        description: 'Returns all animes from A-Z list. Use page parameter for pagination (30 results per page).',
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number (30 results per page)' },
         ],
         responses: {
           '200': { description: 'A-Z list results with pagination', content: { 'application/json': { schema: { type: 'object' } } } },
@@ -235,7 +236,14 @@ const swaggerDocument = {
   },
 };
 
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Swagger UI with proper configuration for serverless
+const swaggerOptions = {
+  explorer: false,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Anikoto API Docs',
+};
+
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
 
 // ─── Home ───
 app.get('/api/home', async (req, res) => {
@@ -374,20 +382,30 @@ app.get('/api/genre/:genre', async (req, res) => {
   }
 });
 
-async function azHandler(req, res) {
+// A-Z endpoint - fixed to handle 'all' properly
+app.get('/api/az', async (req, res) => {
   try {
     setCache(res, 120);
     const page = parseInt(req.query.page, 10) || 1;
-    const letter = req.params.letter || '';
-    const data = await scrapeAZList(letter, page);
+    const data = await scrapeAZList('', page);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-}
+});
 
-app.get('/api/az/:letter', azHandler);
-app.get('/api/az', azHandler);
+app.get('/api/az/:letter', async (req, res) => {
+  try {
+    setCache(res, 120);
+    const page = parseInt(req.query.page, 10) || 1;
+    const letter = req.params.letter;
+    // Handle 'all' as special case - use empty string for base endpoint
+    const data = await scrapeAZList(letter.toLowerCase() === 'all' ? '' : letter, page);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── Meta ───
 app.get('/api/genres', async (req, res) => {
@@ -414,7 +432,10 @@ app.get('/', (req, res) => {
   res.redirect('/docs');
 });
 
-// Local development server
+// Vercel serverless export
+module.exports = app;
+
+// Local development server (only when run directly)
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   app.listen(PORT, () => {
@@ -422,5 +443,3 @@ if (require.main === module) {
     console.log(`Docs at http://localhost:${PORT}/docs`);
   });
 }
-
-module.exports = app;

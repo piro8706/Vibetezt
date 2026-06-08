@@ -548,9 +548,12 @@ async function scrapeGenre(genre, page = 1) {
 
 // ─── A-Z List ───
 async function scrapeAZList(letter = '', page = 1) {
-  const url = letter
-    ? `/az-list/${encodeURIComponent(letter.toUpperCase())}${page > 1 ? `?page=${page}` : ''}`
-    : `/az-list/${page > 1 ? `?page=${page}` : ''}`;
+  // 'all', '', or 'ALL' should use the base /az-list endpoint
+  const isAll = !letter || letter.toLowerCase() === 'all';
+  const url = isAll
+    ? `/az-list${page > 1 ? `?page=${page}` : ''}`
+    : `/az-list/${encodeURIComponent(letter.toUpperCase())}${page > 1 ? `?page=${page}` : ''}`;
+  
   const $ = await fetchHTML(url);
   const results = [];
 
@@ -560,7 +563,7 @@ async function scrapeAZList(letter = '', page = 1) {
 
   const pagination = extractPagination($);
 
-  return { results, page, letter: letter || 'all', ...pagination };
+  return { results, page, letter: isAll ? 'all' : letter.toUpperCase(), ...pagination };
 }
 
 // ─── Genres List ───
