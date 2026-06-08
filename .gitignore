@@ -1,0 +1,6 @@
+node_modules/
+output/*.json
+.vercel
+.env
+.env.local
+*.log
