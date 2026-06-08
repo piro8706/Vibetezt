@@ -547,7 +547,7 @@ async function scrapeGenre(genre, page = 1) {
 }
 
 // ─── A-Z List ───
-async function scrapeAZList(letter = '', page = 1) {
+async function scrapeAZList(letter = '', page = 1, limit = 0) {
   // 'all', '', or 'ALL' should use the base /az-list endpoint
   const isAll = !letter || letter.toLowerCase() === 'all';
   const url = isAll
@@ -563,7 +563,47 @@ async function scrapeAZList(letter = '', page = 1) {
 
   const pagination = extractPagination($);
 
-  return { results, page, letter: isAll ? 'all' : letter.toUpperCase(), ...pagination };
+  // Apply limit if specified
+  const limitedResults = limit > 0 ? results.slice(0, limit) : results;
+
+  return { 
+    results: limitedResults, 
+    page, 
+    letter: isAll ? 'all' : letter.toUpperCase(),
+    limit: limit > 0 ? limit : results.length,
+    total: results.length,
+    ...pagination 
+  };
+}
+
+// ─── Get All Animes (fetches all pages) ───
+async function scrapeAllAnimes(maxPages = 0) {
+  const allResults = [];
+  let page = 1;
+  let hasMore = true;
+  
+  console.log('Fetching all animes...');
+  
+  while (hasMore) {
+    const data = await scrapeAZList('', page);
+    allResults.push(...data.results);
+    console.log(`  Page ${page}: ${data.results.length} animes (total: ${allResults.length})`);
+    
+    hasMore = data.hasNextPage && (maxPages === 0 || page < maxPages);
+    page++;
+    
+    // Rate limiting - be nice to the server
+    if (hasMore) {
+      await sleep(500);
+    }
+  }
+  
+  return { 
+    results: allResults, 
+    total: allResults.length,
+    pages: page - 1,
+    letter: 'all'
+  };
 }
 
 // ─── Genres List ───
@@ -834,6 +874,7 @@ module.exports = {
   searchAnime,
   scrapeGenre,
   scrapeAZList,
+  scrapeAllAnimes,
   scrapeGenres,
   BASE_URL,
 };

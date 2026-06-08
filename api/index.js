@@ -204,12 +204,27 @@ const swaggerDocument = {
       get: {
         tags: ['Browse'],
         summary: 'A-Z anime list (all animes)',
-        description: 'Returns all animes from A-Z list. Use page parameter for pagination (30 results per page).',
+        description: 'Returns all animes from A-Z list. Supports pagination and custom limits.',
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number (30 results per page)' },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+          { name: 'limit', in: 'query', schema: { type: 'integer' }, description: 'Max results per page (default: all results on page, max ~100)' },
         ],
         responses: {
           '200': { description: 'A-Z list results with pagination', content: { 'application/json': { schema: { type: 'object' } } } },
+          '500': { description: 'Server error' },
+        },
+      },
+    },
+    '/api/az/all': {
+      get: {
+        tags: ['Browse'],
+        summary: 'Get ALL animes (warning: large response)',
+        description: 'Fetches all anime from all pages. Use with caution - returns 8000+ animes. For production, use paginated /api/az endpoint.',
+        parameters: [
+          { name: 'maxPages', in: 'query', schema: { type: 'integer' }, description: 'Limit number of pages to fetch (default: all ~293 pages)' },
+        ],
+        responses: {
+          '200': { description: 'All anime list', content: { 'application/json': { schema: { type: 'object' } } } },
           '500': { description: 'Server error' },
         },
       },
@@ -382,12 +397,26 @@ app.get('/api/genre/:genre', async (req, res) => {
   }
 });
 
-// A-Z endpoint - fixed to handle 'all' properly
+// A-Z endpoint - supports pagination and limit
 app.get('/api/az', async (req, res) => {
   try {
     setCache(res, 120);
     const page = parseInt(req.query.page, 10) || 1;
-    const data = await scrapeAZList('', page);
+    const limit = parseInt(req.query.limit, 10) || 0;
+    const data = await scrapeAZList('', page, limit);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get ALL animes (warning: slow, large response)
+app.get('/api/az/all', async (req, res) => {
+  try {
+    // Don't cache this - it's too large
+    const maxPages = parseInt(req.query.maxPages, 10) || 0;
+    console.log(`Fetching all animes (maxPages: ${maxPages || 'all'})...`);
+    const data = await scrapeAllAnimes(maxPages);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
