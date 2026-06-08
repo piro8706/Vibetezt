@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
+const compression = require('compression');
 
 const {
   scrapeHome,
@@ -14,15 +15,90 @@ const {
   searchAnime,
   scrapeGenre,
   scrapeAZList,
+  scrapeAllAnimes,
   scrapeGenres,
+  BASE_URL,
 } = require('../scraper');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-function setCache(res, seconds = 60) {
-  res.set('Cache-Control', `public, max-age=${seconds}`);
+// Middleware
+app.use(compression()); // Enable gzip compression
+app.use(cors({
+  origin: '*',
+  methods: ['GET'],
+  allowedHeaders: ['Content-Type'],
+  maxAge: 86400,
+}));
+app.use(express.json({ limit: '1mb' }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  req.requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  req.startTime = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - req.startTime;
+    console.log(`[${req.requestId}] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+});
+
+// Rate limiting (simple in-memory)
+const rateLimitMap = new Map();
+const RATE_LIMIT = 100; // requests per minute
+const RATE_WINDOW = 60000; // 1 minute
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_WINDOW });
+    return next();
+  }
+  
+  const record = rateLimitMap.get(ip);
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + RATE_WINDOW;
+    return next();
+  }
+  
+  if (record.count >= RATE_LIMIT) {
+    res.set('X-RateLimit-Limit', RATE_LIMIT);
+    res.set('X-RateLimit-Remaining', 0);
+    res.set('X-RateLimit-Reset', record.resetTime);
+    return res.status(429).json({ 
+      error: 'Too many requests', 
+      retryAfter: Math.ceil((record.resetTime - now) / 1000) 
+    });
+  }
+  
+  record.count++;
+  res.set('X-RateLimit-Limit', RATE_LIMIT);
+  res.set('X-RateLimit-Remaining', RATE_LIMIT - record.count);
+  res.set('X-RateLimit-Reset', record.resetTime);
+  next();
+}
+
+app.use(rateLimit);
+
+// Cache control helper
+function setCache(res, seconds = 60, isPublic = true) {
+  res.set('Cache-Control', `${isPublic ? 'public' : 'private'}, max-age=${seconds}, s-maxage=${seconds * 2}`);
+}
+
+// Error handler
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+// Custom error class
+class APIError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
 
 const swaggerDocument = {
