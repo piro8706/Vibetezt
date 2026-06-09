@@ -202,8 +202,7 @@ async function scrapeHome() {
   for (const section of topSections) {
     $(section.selector).each((_, el) => {
       const $el = $(el);
-      // The <a> tag is the parent of .item in top sections
-      const link = $el.closest('a');
+      const link = $el.find('a').first();
       const href = link.attr('href') || '';
       const slugMatch = href.match(/\/watch\/([^/]+)/);
       const slug = slugMatch ? slugMatch[1] : '';
