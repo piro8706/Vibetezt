@@ -44,8 +44,13 @@ async function fetchJSON(url, extraHeaders = {}) {
 
 function extractAnimeFromItem($, item) {
   const $item = $(item);
-  const link = $item.find('a').first();
-  const href = link.attr('href') || '';
+  // Try finding <a> as child first, then as parent
+  let link = $item.find('a').first();
+  let href = link.attr('href') || '';
+  if (!href) {
+    link = $item.closest('a');
+    href = link.attr('href') || '';
+  }
   const slugMatch = href.match(/\/watch\/([^/]+)/);
   const slug = slugMatch ? slugMatch[1] : '';
 
@@ -197,7 +202,8 @@ async function scrapeHome() {
   for (const section of topSections) {
     $(section.selector).each((_, el) => {
       const $el = $(el);
-      const link = $el.find('a').first();
+      // The <a> tag is the parent of .item in top sections
+      const link = $el.closest('a');
       const href = link.attr('href') || '';
       const slugMatch = href.match(/\/watch\/([^/]+)/);
       const slug = slugMatch ? slugMatch[1] : '';
@@ -371,6 +377,56 @@ async function scrapeEpisodes(animeId, slug) {
   });
 
   return episodes;
+}
+
+// ─── Next Episode Estimate ───
+function calculateNextEpisodeEstimate(episodes, broadcastInfo = '') {
+  if (!episodes || episodes.length < 2) {
+    return null;
+  }
+
+  // Sort episodes by number to get the latest ones
+  const sorted = [...episodes].sort((a, b) => b.number - a.number);
+  const latest = sorted[0];
+  const previous = sorted[1];
+
+  // If we have timestamps, calculate average release interval
+  if (latest.timestamp && previous.timestamp) {
+    const intervalMs = Math.abs(latest.timestamp - previous.timestamp) * 1000;
+    const nextTimestamp = latest.timestamp + Math.floor(intervalMs / 1000);
+    const nextDate = new Date(nextTimestamp * 1000);
+
+    // Detect typical anime release patterns
+    const intervalHours = intervalMs / (1000 * 60 * 60);
+    let pattern = 'unknown';
+    if (intervalHours < 48) pattern = 'daily';
+    else if (intervalHours < 192) pattern = 'weekly';
+    else if (intervalHours < 768) pattern = 'monthly';
+
+    return {
+      estimatedTime: nextDate.toISOString(),
+      estimatedTimestamp: nextTimestamp,
+      pattern: pattern,
+      basedOn: 'release interval',
+      confidence: episodes.length >= 5 ? 'high' : 'medium',
+    };
+  }
+
+  // Fallback: try to parse broadcast info
+  if (broadcastInfo) {
+    const dayMatch = broadcastInfo.match(/(?:Aired|Broadcast):\s*([A-Za-z]+(?:\s+\d+)?)/i);
+    if (dayMatch) {
+      return {
+        estimatedTime: null,
+        pattern: 'broadcast schedule',
+        schedule: dayMatch[1],
+        basedOn: 'broadcast info',
+        confidence: 'low',
+      };
+    }
+  }
+
+  return null;
 }
 
 // ─── Single Episode ───
@@ -876,5 +932,6 @@ module.exports = {
   scrapeAZList,
   scrapeAllAnimes,
   scrapeGenres,
+  calculateNextEpisodeEstimate,
   BASE_URL,
 };
